@@ -42,8 +42,19 @@ class QuotesSpider(scrapy.Spider):
         scc_links += response.xpath('//span[contains(.,"SCC")]/../@href').extract()
         scc_links += response.xpath('//a[contains(.,"SCC")]/@href').extract()
         scc_links += response.xpath('//a[contains(.,"Council")]/@href').extract()
-        data['scc_links'] = list(set(scc_links))
+        scc_links = [link for link in list(set(scc_links)) if 'student-council' not in link]
+        for link in scc_links:
+            yield scrapy.Request(link, callback=self.parse_cc,
+                                     meta={'url':response.url})
+        data['scc_links'] = scc_links
         yield data
 
     def parse_cc(self, response):
-        response.css('a::attr(href)').re(r'.*2017.*')
+        links = (
+            response.xpath('//a[contains(.,"Minutes")]/@href').extract() +
+            response.xpath('//a[contains(.,"minutes")]/@href').extract()
+            )
+        return {
+            "url": response.meta['url'],
+            "sub-links": links
+        }
