@@ -1,5 +1,5 @@
 import scrapy
-
+from itertools import chain
 class QuotesSpider(scrapy.Spider):
     name = "council"
 
@@ -7,23 +7,31 @@ class QuotesSpider(scrapy.Spider):
             'http://alpineschools.org/schools/'
     ]
 
+
+    def link_school(self, selector, response, level):
+        links = response.css(selector)
+        results = zip(links.css('::text').extract(),
+                      links.css('::attr(href)').extract())
+        for text, link in results:
+            yield scrapy.Request(link, callback=self.parse_school,
+                                 meta={"level": level,
+                                       "name": text})
+
     def parse(self, response):
-        elementary_links = response.css(
-            'div.school-list div.nectar-fancy-ul li a::attr(href)').extract()
-        middle_links = response.css(
-            'div.middle-list div.nectar-fancy-ul li a::attr(href)').extract()
-        high_links = response.css(
-            '#ajax-content-wrap > div.container-wrap > div > div > div:nth-child(8) div.nectar-fancy-ul li a::attr(href)').extract()
-        for link in elementary_links:
-            yield scrapy.Request(link, callback=self.parse_school, meta={"level": "elementary"})
-        for link in middle_links:
-            yield scrapy.Request(link, callback=self.parse_school, meta={"level": "middle"})
-        for link in high_links:
-            yield scrapy.Request(link, callback=self.parse_school, meta={"level": "high"})
+        gen = chain(
+        self.link_school('div.school-list div.nectar-fancy-ul li a', response,
+                    "elementary"),
+        self.link_school('div.middle-list div.nectar-fancy-ul li a',
+                         response, "middle"),
+        self.link_school('#ajax-content-wrap > div.container-wrap > div > div > div:nth-child(8) div.nectar-fancy-ul li a', response,
+                    "high"))
+        for g in gen:
+            yield g
 
     def parse_school(self, response):
         data= {'url': response.url,
-               'level': response.meta['level']
+               'level': response.meta['level'],
+               'name': response.meta['name']
                }
         info = response.css('.header_text::text').extract_first()
         if info:
@@ -49,10 +57,20 @@ class QuotesSpider(scrapy.Spider):
         data['scc_links'] = scc_links
         yield data
 
+    def links_insensitive(self, word, response):
+        return (response.xpath('//a[contains(.,"%s")]/@href' % word).extract() +
+            response.xpath('//a[contains(.,"%s")]/@href' % word.lower()).extract()
+            )
     def parse_cc(self, response):
         links = (
-            response.xpath('//a[contains(.,"Minutes")]/@href').extract() +
-            response.xpath('//a[contains(.,"minutes")]/@href').extract()
+            response.css('a::attr(href)').re(r'.*drive.google.*') +
+            self.links_insensitive('Agenda', response) +
+            self.links_insensitive('Notes', response) +
+            self.links_insensitive('Minutes', response) +
+            self.links_insensitive('Report', response) +
+            self.links_insensitive('Meeting', response) +
+            self.links_insensitive('Improvement', response) +
+            self.links_insensitive('Plan', response)
             )
         return {
             "url": response.meta['url'],
