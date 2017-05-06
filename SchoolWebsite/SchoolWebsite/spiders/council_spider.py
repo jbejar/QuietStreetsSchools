@@ -2,7 +2,6 @@ import scrapy
 from itertools import chain
 class QuotesSpider(scrapy.Spider):
     name = "council"
-
     start_urls = [
             'http://alpineschools.org/schools/'
     ]
@@ -33,17 +32,6 @@ class QuotesSpider(scrapy.Spider):
                'level': response.meta['level'],
                'name': response.meta['name']
                }
-        info = response.css('.header_text::text').extract_first()
-        if info:
-            info = info.encode('ascii','replace').split(' ? ')
-            if len(info) > 0:
-                data['address'] = info[0]
-            if len(info) > 1:
-                data['phone'] = info[1]
-            if len(info) > 2:
-                data['fax'] = info[2]
-        else:
-            address = response.css('h4::text').extract_first()
         data['school'] = response.css('title::text').re(r'\w+ \w+')[0]
         scc_links = response.css('a::attr(href)').re(r'.*scc.*')
         scc_links += response.css('a::attr(href)').re(r'.*council.*')
@@ -62,8 +50,12 @@ class QuotesSpider(scrapy.Spider):
             response.xpath('//a[contains(.,"%s")]/@href' % word.lower()).extract()
             )
     def parse_cc(self, response):
-        links = (
+        links = list(set(
             response.css('a::attr(href)').re(r'.*drive.google.*') +
+            response.css('a::attr(href)').re(r'.*docs.google.*') +
+            response.css('a::attr(href)').re(r'.*minutes.*') +
+            response.css('a::attr(href)').re(r'.*report.*') +
+            response.css('a::attr(href)').re(r'.*agenda.*') +
             self.links_insensitive('Agenda', response) +
             self.links_insensitive('Notes', response) +
             self.links_insensitive('Minutes', response) +
@@ -71,8 +63,25 @@ class QuotesSpider(scrapy.Spider):
             self.links_insensitive('Meeting', response) +
             self.links_insensitive('Improvement', response) +
             self.links_insensitive('Plan', response)
-            )
-        return {
-            "url": response.meta['url'],
+            ))
+        url = response.meta['url']
+        for link in links:
+            for year in range(2013, 2018):
+                if str(year) in link:
+                    yield {'url': url,
+                           year: True}
+            if link.endswith('pdf'):
+                continue
+            yield scrapy.Request(link, callback=self.parse_doc,
+                                 meta={'url':url})
+        yield {
+            "url": url,
             "sub-links": links
         }
+
+    def parse_doc(self, response):
+        data = {'url': response.meta['url']}
+        for year in range(2013, 2018):
+            if str(year) in response.body:
+                data[year] = True
+        yield data
