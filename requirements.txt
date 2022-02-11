@@ -168,7 +168,7 @@ toolz==0.8.2
 tornado==4.4.2
 traitlets==4.3.1
 tvdb-api==1.10
-Twisted==17.1.0
+Twisted==22.1.0
 unicodecsv==0.14.1
 w3lib==1.17.0
 wcwidth==0.1.7
